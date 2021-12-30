@@ -34,35 +34,67 @@ static bool ADF435x_bCheckLookupVal(char *acName, float fVal, float *pfArray, in
 static int ADF435x_iLookupVal(float fVal, float *pfArray, int iArrayLen);
 static ADF435X_teVerbosity ADF435x_eVerbosity;
 
-bool ADF435x_Init(ADF435X_teVerbosity eVerbosity)
+void ADF435x_vInit(ADF435X_teVerbosity eVerbosity)
 {
     ADF435x_eVerbosity = eVerbosity;
-    return true;
 }
 
-bool ADF435x_CalculateSettings(uint64_t u64Frequency, ADF435X_tsSettings *psSettings)
+// Fills on an options struct with the defaults
+void ADF435x_vGetOptions(ADF435x_tsOptions *psOptions)
 {
 
-    ADF435X_teDeviceType eDeviceType = E_ADF435X_DEVICE_TYPE_ADF4351;
-    ADF435X_teFeedbackSelect eFeedbackSelect = E_ADF435X_FEEDBACK_SELECT_FUNDAMENTAL;
+    psOptions->eDeviceType = E_ADF435X_DEVICE_TYPE_ADF4351;
+    psOptions->eFeedbackSelect = E_ADF435X_FEEDBACK_SELECT_FUNDAMENTAL;
+    psOptions->eBandSelectClockMode = E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW;
+    psOptions->eLowNoiseOrLowSpurMode = E_ADF435X_LOW_NOISE_MODE;
+    psOptions->eMuxOut = E_ADF435X_MUX_OUT_TRISTATE;
+    psOptions->ePDPolarity = E_ADF435X_PD_POLARITY_POSITIVE;
+    psOptions->eClockDivMode = E_ADF435X_CLOCK_DIVIDER_MODE_OFF;
+    psOptions-> eAuxOutputSelect = E_ADF435X_AUX_OUTPUT_SELECT_DIVIDED_OUTPUT;
+    psOptions->eLDPinMode = E_ADF435X_LDPIN_MODE_DIGITAL_LOCK_DETECT;
+    psOptions->ePrescaler = E_ADF435X_PRESCALER_8_OVER_9;
+    psOptions->eOutputPower = E_ADF435X_OUTPUT_POWER_PLUS_5dBm;
+    psOptions->eAuxOutputPower = E_ADF435X_OUTPUT_POWER_MINUS_4dBm;
 
-    ADF435X_teBandSelectClockMode eBandSelectClockMode = E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW;
-    uint64_t u64ReferenceFrequencyHz = 25000000;
-    uint64_t u64ChannelSpacingHz = 100000;
-    uint64_t u64RCounter = 1;
+    psOptions->u64ReferenceFrequencyHz = 25000000;
+    psOptions->u64ChannelSpacingHz = 100000;
+    psOptions->u32RCounter = 1;
+
+    psOptions->u32PhaseValue = 0;
+    psOptions->u32ClockDividerValue = 150;
+
+    psOptions->fChargePumpCurrent = 2.5;
+    psOptions->fLDP = 10.0;
+    psOptions->fABP = 10;
+
+    psOptions->bRefDoubler = false;
+    psOptions->bRefDiv2 = false;
+    psOptions->bEnableGCD = true;
+
+    psOptions->bDoubleBufR4 = false;
+    psOptions->bPowerDown = false;
+    psOptions->bCPTristate = false;
+    psOptions->bCounterReset = false;
+    psOptions->bChargeCancel = false;
+    psOptions->bCSR = false;
+    psOptions->bVCOPowerDown = false;
+    psOptions->bMuteTillLockDetect = false;
+    psOptions->bAuxOutputEnable = false;
+    psOptions->bOutputEnable = true;
+}
+
+bool ADF435x_bCalculateSettings(uint64_t u64Frequency, ADF435x_tsOptions *psOptions, ADF435X_tsSettings *psSettings)
+{
+
     psSettings->u64BandSelectClockDivider = 0;
     psSettings->u64OutputDivider = 0;
-
-    bool bRefDoubler = false;
-    bool bRefDiv2 = false;
-    bool bEnableGCD = true;
 
     uint64_t u64N;
     uint64_t u64Div;
     uint64_t u64PFDScale;
     uint64_t u64BandSelectClockFrequency;
 
-    uint64_t u64PFDFreqHz = ((u64ReferenceFrequencyHz * (bRefDoubler ? 2.0 : 1.0)) / ((bRefDiv2 ? 2.0 : 1.0) * u64RCounter));
+    uint64_t u64PFDFreqHz = ((psOptions->u64ReferenceFrequencyHz * (psOptions->bRefDoubler ? 2.0 : 1.0)) / ((psOptions->bRefDiv2 ? 2.0 : 1.0) * psOptions->u32RCounter));
 
     if(ADF435x_eVerbosity >= E_ADF435X_VERBOSITY_HIGH) printf("Frequency = %d.%dMHz   PFD Frequency=%d.%dMHz\n", u64Frequency / 1000000, u64Frequency % 1000000, u64PFDFreqHz / 1000000, u64PFDFreqHz % 1000000);
 
@@ -78,7 +110,7 @@ bool ADF435x_CalculateSettings(uint64_t u64Frequency, ADF435X_tsSettings *psSett
 
     if(ADF435x_eVerbosity >= E_ADF435X_VERBOSITY_HIGH) printf("Output Divider = %d\n", psSettings->u64OutputDivider);
 
-    if(eFeedbackSelect == E_ADF435X_FEEDBACK_SELECT_FUNDAMENTAL)
+    if(psOptions->eFeedbackSelect == E_ADF435X_FEEDBACK_SELECT_FUNDAMENTAL)
     {
         u64N = u64Frequency * psSettings->u64OutputDivider * 1000 / u64PFDFreqHz;
     }
@@ -88,10 +120,10 @@ bool ADF435x_CalculateSettings(uint64_t u64Frequency, ADF435X_tsSettings *psSett
     }
 
     psSettings->u64Int = u64N / 1000;
-    psSettings->u64Mod = u64ReferenceFrequencyHz / u64ChannelSpacingHz;
+    psSettings->u64Mod = psOptions->u64ReferenceFrequencyHz / psOptions->u64ChannelSpacingHz;
     psSettings->u64Frac = ((u64N % 1000) * psSettings->u64Mod) / 1000;
 
-    if(bEnableGCD)
+    if(psOptions->bEnableGCD)
     {
         u64Div = ADF435x_fGCD(psSettings->u64Mod, psSettings->u64Frac);
         psSettings->u64Mod = psSettings->u64Mod / u64Div;
@@ -115,14 +147,14 @@ bool ADF435x_CalculateSettings(uint64_t u64Frequency, ADF435X_tsSettings *psSett
             return false;
         }
 
-        if(psSettings->u64Frac == 0 && eDeviceType == E_ADF435X_DEVICE_TYPE_ADF4351)
+        if(psSettings->u64Frac == 0 && psOptions->eDeviceType == E_ADF435X_DEVICE_TYPE_ADF4351)
         {
             if(u64PFDFreqHz > 90000000)
             {
                 printf("Maximum PFD frequency in Int-N mode (FRAC = 0) is 90MHz.\n");
                 return false;
             }
-            if(eBandSelectClockMode == E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW)
+            if(psOptions->eBandSelectClockMode == E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW)
             {
                 printf("Band Select Clock Mode must be set to High when PFD is >32MHz in Int-N mode (FRAC = 0).\n");
                 return false;
@@ -132,7 +164,7 @@ bool ADF435x_CalculateSettings(uint64_t u64Frequency, ADF435X_tsSettings *psSett
 
     if(psSettings->u64BandSelectClockDivider == 0)
     {
-        if(eBandSelectClockMode == E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW)
+        if(psOptions->eBandSelectClockMode == E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW)
         {
             u64PFDScale = 8;
             psSettings->u64BandSelectClockDivider = MIN((8 * u64PFDFreqHz) / 1000000, 255);
@@ -154,9 +186,9 @@ bool ADF435x_CalculateSettings(uint64_t u64Frequency, ADF435X_tsSettings *psSett
     }
     else if(u64BandSelectClockFrequency > 125000000)
     {
-        if(eDeviceType == E_ADF435X_DEVICE_TYPE_ADF4351)
+        if(psOptions->eDeviceType == E_ADF435X_DEVICE_TYPE_ADF4351)
         {
-            if(eBandSelectClockMode == E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW)
+            if(psOptions->eBandSelectClockMode == E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW)
             {
                 printf("Band Select Clock Frequency is too high. Reduce to 125kHz or less, or set Band Select Clock Mode to High.\n");
                 return false;
@@ -175,46 +207,14 @@ bool ADF435x_CalculateSettings(uint64_t u64Frequency, ADF435X_tsSettings *psSett
     return true;
 }
 
-bool ADF435x_GenerateRegisters(ADF435X_tsSettings *psSettings, ADF435X_tuRegisters *puRegisters)
+bool ADF435x_bGenerateRegisters(ADF435x_tsOptions *psOptions, ADF435X_tsSettings *psSettings, ADF435X_tuRegisters *puRegisters)
 {
 
     float afChargePumpCurrent[] = {0.31, 0.63, 0.94, 1.25, 1.56, 1.88, 2.19, 2.50, 2.81, 3.13, 3.44, 3.75, 4.06, 4.38, 4.49, 5.00};
     float afABP[] = {10, 6};
     float afOutputPower[] = {-4, -1, 2, 5};
 
-    ADF435X_teDeviceType eDeviceType = E_ADF435X_DEVICE_TYPE_ADF4351;
-    uint32_t u32PhaseValue = 0;
-    uint32_t u32BandSelectClockDivider = 200;
-    ADF435X_teBandSelectClockMode eBandSelectClockMode = E_ADF435X_BAND_SELECT_CLOCK_MODE_LOW;
-    uint32_t u32Prescaler = (8/9);
-    ADF435X_teLowNoiseOrLowSpurMode eLowNoiseOrLowSpurMode = E_ADF435X_LOW_NOISE_MODE;
-    ADF435X_teMuxOut eMuxOut = E_ADF435X_MUX_OUT_TRISTATE;
-    bool bRefDoubler = false;
-    bool bRefDiv2 = false;
-    uint32_t u32RCounter = 1;
-    bool bDoubleBufR4 = false;
-
-    float fChargePumpCurrent = 2.5;
-    float fLDP = 10.0;
-    ADF435X_tePDPolarity ePDPolarity = E_ADF435X_PD_POLARITY_POSITIVE;
-    bool bPowerDown = false;
-    bool bCPTristate = false;
-    bool bCounterReset = false;
-    float fABP = 10;
-    bool bChargeCancel = false;
-    bool bCSR = false;
-    ADF435X_teClockDviderMode eClockDivMode = E_ADF435X_CLOCK_DIVIDER_MODE_OFF;
-    uint32_t u32ClockDividerValue = 150;
-    ADF435X_teFeedbackSelect eFeedbackSelect = E_ADF435X_FEEDBACK_SELECT_FUNDAMENTAL;
-    // uint32_t u32OutputDivider = 64;
-    bool bVCOPowerDown = false;
-    bool bMuteTillLockDetect = false;
-    ADF435X_teAuxOutputSelect eAuxOutputSelect = E_ADF435X_AUX_OUTPUT_SELECT_DIVIDED_OUTPUT;
-    bool bAuxOutputEnable = false;
-    float fAuxOutputPower = -4.0;
-    bool bOutputEnable = true;
-    float fOutputPower = 5.0;
-    ADF435X_teLDPinMode eLDPinMode = E_ADF435X_LDPIN_MODE_DIGITAL_LOCK_DETECT;
+    // uint32_t u32BandSelectClockDivider = 200;
 
     uint32_t u32OutputDividerSelect;
 
@@ -224,10 +224,10 @@ bool ADF435x_GenerateRegisters(ADF435X_tsSettings *psSettings, ADF435X_tuRegiste
     bOk &= ADF435x_bCheckUint("FRAC", psSettings->u64Frac, 4095);
     bOk &= ADF435x_bCheckUint("MOD", psSettings->u64Mod, 4095);
 
-    bOk &= ADF435x_bCheckLookupVal("ChargePumpCurrent", fChargePumpCurrent, afChargePumpCurrent, sizeof(afChargePumpCurrent) / sizeof(float));
-    bOk &= ADF435x_bCheckLookupVal("ABP", fABP, afABP, sizeof(afABP) / sizeof(float));
-    bOk &= ADF435x_bCheckLookupVal("AuxOutputPower", fAuxOutputPower, afOutputPower, sizeof(afOutputPower) / sizeof(float));
-    bOk &= ADF435x_bCheckLookupVal("OutputPower", fOutputPower, afOutputPower, sizeof(afOutputPower) / sizeof(float));
+    bOk &= ADF435x_bCheckLookupVal("ChargePumpCurrent", psOptions->fChargePumpCurrent, afChargePumpCurrent, sizeof(afChargePumpCurrent) / sizeof(float));
+    bOk &= ADF435x_bCheckLookupVal("ABP", psOptions->fABP, afABP, sizeof(afABP) / sizeof(float));
+
+    if(!bOk) return false;
 
 
     u32OutputDividerSelect = log2(psSettings->u64OutputDivider);
@@ -245,56 +245,56 @@ bool ADF435x_GenerateRegisters(ADF435X_tsSettings *psSettings, ADF435X_tuRegiste
                                 0x0;
 
     // R1
-    puRegisters->u32Register1 = (u32PhaseValue != 0 ? 1 : 0) << 28 |
-                                (u32Prescaler == (8/9) ? 1 : 0) << 27 |
-                                (u32PhaseValue == 0 ? 1 : 0) << 15 |
+    puRegisters->u32Register1 = (psOptions->u32PhaseValue != 0 ? 1 : 0) << 28 |
+                                (psOptions->ePrescaler == E_ADF435X_PRESCALER_8_OVER_9 ? 1 : 0) << 27 |
+                                (psOptions->u32PhaseValue == 0 ? 1 : 0) << 15 |
                                 (uint32_t)psSettings->u64Mod << 3 |
                                 0x1;
 
     // R2
-    puRegisters->u32Register2 = (uint32_t)eLowNoiseOrLowSpurMode << 29 |
-                                (uint32_t)eMuxOut << 26 |
-                                (bRefDoubler ? 1 : 0) << 25 |
-                                (bRefDiv2 ? 1 : 0) << 24 |
-                                u32RCounter << 14 |
-                                (bDoubleBufR4 ? 1 : 0) << 13 |
-                                ADF435x_iLookupVal(fChargePumpCurrent, afChargePumpCurrent, sizeof(afChargePumpCurrent) / sizeof(float)) << 9 |
+    puRegisters->u32Register2 = (uint32_t)psOptions->eLowNoiseOrLowSpurMode << 29 |
+                                (uint32_t)psOptions->eMuxOut << 26 |
+                                (psOptions->bRefDoubler ? 1 : 0) << 25 |
+                                (psOptions->bRefDiv2 ? 1 : 0) << 24 |
+                                psOptions->u32RCounter << 14 |
+                                (psOptions->bDoubleBufR4 ? 1 : 0) << 13 |
+                                ADF435x_iLookupVal(psOptions->fChargePumpCurrent, afChargePumpCurrent, sizeof(afChargePumpCurrent) / sizeof(float)) << 9 |
                                 (psSettings->u64Frac == 0 ? 0 : 1) << 8 |
-                                (fLDP == 10.0 ? 0 : 1) << 7 |
-                                (uint32_t)ePDPolarity << 6 |
-                                (bPowerDown ? 1 : 0) << 5 |
-                                (bCPTristate ? 1 : 0) << 4 |
-                                (bCounterReset ? 1 : 0) << 3 |
+                                (psOptions->fLDP == 10.0 ? 0 : 1) << 7 |
+                                (uint32_t)psOptions->ePDPolarity << 6 |
+                                (psOptions->bPowerDown ? 1 : 0) << 5 |
+                                (psOptions->bCPTristate ? 1 : 0) << 4 |
+                                (psOptions->bCounterReset ? 1 : 0) << 3 |
                                 0x2;
 
     // R3
-    puRegisters->u32Register3 = (bCSR ? 1 : 0) << 18 |
-                                (uint32_t)eClockDivMode << 15 |
-                                u32ClockDividerValue << 3 |
+    puRegisters->u32Register3 = (psOptions->bCSR ? 1 : 0) << 18 |
+                                (uint32_t)psOptions->eClockDivMode << 15 |
+                                psOptions->u32ClockDividerValue << 3 |
                                 0x3;
     
-    if(eDeviceType == E_ADF435X_DEVICE_TYPE_ADF4351)
+    if(psOptions->eDeviceType == E_ADF435X_DEVICE_TYPE_ADF4351)
     {
-        puRegisters->u32Register3 |= (uint32_t)eBandSelectClockMode << 23 |
-                                        ADF435x_iLookupVal(fABP, afABP, sizeof(afABP) / sizeof(float)) << 22 |
-                                        (bChargeCancel ? 1 : 0) << 21;
+        puRegisters->u32Register3 |= (uint32_t)psOptions->eBandSelectClockMode << 23 |
+                                        ADF435x_iLookupVal(psOptions->fABP, afABP, sizeof(afABP) / sizeof(float)) << 22 |
+                                        (psOptions->bChargeCancel ? 1 : 0) << 21;
     }
 
     // R4
-    puRegisters->u32Register4 = (uint32_t)eFeedbackSelect << 23 |
+    puRegisters->u32Register4 = (uint32_t)psOptions->eFeedbackSelect << 23 |
                                 u32OutputDividerSelect << 20 |
-                                u32BandSelectClockDivider << 12 |
-                                (bVCOPowerDown ? 1 : 0) << 11 |
-                                (bMuteTillLockDetect ? 1 : 0) << 10 |
-                                (uint32_t)eAuxOutputSelect << 9 |
-                                (bAuxOutputEnable ? 1 : 0) << 8 |
-                                ADF435x_iLookupVal(fAuxOutputPower, afOutputPower, sizeof(afOutputPower) / sizeof(float)) << 6 |
-                                (bOutputEnable ? 1 : 0) << 5 |
-                                ADF435x_iLookupVal(fOutputPower, afOutputPower, sizeof(afOutputPower) / sizeof(float)) << 3 |
+                                psSettings->u64BandSelectClockDivider << 12 |
+                                (psOptions->bVCOPowerDown ? 1 : 0) << 11 |
+                                (psOptions->bMuteTillLockDetect ? 1 : 0) << 10 |
+                                (uint32_t)psOptions->eAuxOutputSelect << 9 |
+                                (psOptions->bAuxOutputEnable ? 1 : 0) << 8 |
+                                (uint32_t)psOptions->eAuxOutputPower << 6 |
+                                (psOptions->bOutputEnable ? 1 : 0) << 5 |
+                                (uint32_t)psOptions->eOutputPower << 3 |
                                 0x4;
 
     // R5
-    puRegisters->u32Register5 = (uint32_t)eLDPinMode << 22 |
+    puRegisters->u32Register5 = (uint32_t)psOptions->eLDPinMode << 22 |
                                 3 << 19 |
                                 0x5;
 

@@ -84,7 +84,7 @@ static void vParseCommandLineOptions(tsInstance *psInstance, int argc, char *arg
 static BOOL WINAPI bCtrlHandler(DWORD dwCtrlType);
 #endif
 
-void vSetFrequency(uint64_t u64FrequencyHz);
+bool bConfigureADF435x(ADF435x_tsOptions *psOptions, uint64_t u64FrequencyHz);
 
 /****************************************************************************/
 /***        Exported Variables                                            ***/
@@ -133,6 +133,8 @@ int main(int argc, char *argv[])
 	sInstance.u64FreqStep = 100000;
 	sInstance.iDelay = 1;
 
+	ADF435x_tsOptions sOptions;
+
 	printf("+----------------------------------------------------------------------+\n" \
 	"|              ADF435xCFG (ADF435x Configurator)                       |\n" \
 	"| Copyright (C) 2021 Lee Mitchell <lee@indigopepper.com>               |\n" \
@@ -147,19 +149,26 @@ int main(int argc, char *argv[])
 
     SetConsoleCtrlHandler(bCtrlHandler, TRUE);
 
+	// Initialise options struct for ADF435x device
+	ADF435x_vGetOptions(&sOptions);
+
+	// Parse the command line options
 	vParseCommandLineOptions(&sInstance, argc, argv);
 
+	// Initialise the CH4351A UAB to SPI adapter
 	if(!CH341DeviceInit())
 	{
 		printf("Error at line %d\n", __LINE__);
 	}
 
+	// Disable chip select
 	if(!CH341ChipSelect(0, FALSE))
 	{
 		printf("Error at line %d\n", __LINE__);
 	}
 
-	ADF435x_Init(E_ADF435X_VERBOSITY_LOW);
+	// Initialise ADF435x functions
+	ADF435x_vInit(E_ADF435X_VERBOSITY_LOW);
 
 	if(sInstance.bSweepMode)
 	{
@@ -170,22 +179,24 @@ int main(int argc, char *argv[])
 			for(uint64_t f = sInstance.u64FreqLow; (f <= sInstance.u64FreqHigh) && !sInstance.bExitRequest; f += sInstance.u64FreqStep)
 			{
 				printf("\r %d.%06dMHz    ", f / 1000000, f % 1000000);
-				vSetFrequency(f);
+				bConfigureADF435x(&sOptions, f);
 				Sleep(sInstance.iDelay);
 			}
 
 		}
 
+		// Switch the output off before we exit
+		sOptions.bOutputEnable = false;
+		bConfigureADF435x(&sOptions, 35000000);
 	}
 	else
 	{
-		vSetFrequency(sInstance.u64Frequency);
+		bConfigureADF435x(&sOptions, sInstance.u64Frequency);
 	}
 
 	CH341DeviceRelease();
 
 	printf("\nDone!\n");
-
 
 	return EXIT_SUCCESS;
 }
@@ -253,17 +264,17 @@ static void vParseCommandLineOptions(tsInstance *psInstance, int argc, char *arg
 
 		case 'l':
 			psInstance->u64FreqLow = _atoi64(optarg);
-			printf("Low Frequency = %d.%dMHz\n", psInstance->u64FreqLow / 1000000, psInstance->u64Frequency % 1000000);
+			printf("Low Frequency = %d.%dMHz\n", psInstance->u64FreqLow / 1000000, psInstance->u64FreqLow % 1000000);
 			break;
 
 		case 'h':
 			psInstance->u64FreqHigh = _atoi64(optarg);
-			printf("High Frequency = %d.%dMHz\n", psInstance->u64FreqHigh / 1000000, psInstance->u64Frequency % 1000000);
+			printf("High Frequency = %d.%dMHz\n", psInstance->u64FreqHigh / 1000000, psInstance->u64FreqHigh % 1000000);
 			break;
 
 		case 'r':
 			psInstance->u64FreqStep = _atoi64(optarg);
-			printf("Step Frequency = %d.%dMHz\n", psInstance->u64FreqStep / 1000000, psInstance->u64Frequency % 1000000);
+			printf("Step Frequency = %d.%dMHz\n", psInstance->u64FreqStep / 1000000, psInstance->u64FreqStep % 1000000);
 			break;
 
 		case 'd':
@@ -347,7 +358,7 @@ static BOOL WINAPI bCtrlHandler(DWORD dwCtrlType)
 #endif
 
 
-void vSetFrequency(uint64_t u64FrequencyHz)
+bool bConfigureADF435x(ADF435x_tsOptions *psOptions, uint64_t u64FrequencyHz)
 {
 
 	char acWord[4] = {0};
@@ -355,9 +366,19 @@ void vSetFrequency(uint64_t u64FrequencyHz)
 	ADF435X_tsSettings sSettings;
 	ADF435X_tuRegisters uRegisters;
 
-	ADF435x_CalculateSettings(u64FrequencyHz, &sSettings);
-	ADF435x_GenerateRegisters(&sSettings, &uRegisters);
+	// Generate calculated settings, exit if there is a problem
+	if(!ADF435x_bCalculateSettings(u64FrequencyHz, psOptions, &sSettings))
+	{
+		return false;
+	}
 
+	// Calculate the register values, exit if there is a problem
+	if(!ADF435x_bGenerateRegisters(psOptions, &sSettings, &uRegisters))
+	{
+		return false;
+	}
+
+	// All good if here so write the 6 registers in order R5, R4, R3, R2, R1 and R0
 	for(int n = 6; n > 0; n--)
 	{
 	
@@ -385,6 +406,7 @@ void vSetFrequency(uint64_t u64FrequencyHz)
 
 	}
 
+	return true;
 }
 
 

@@ -83,6 +83,59 @@ typedef enum {
     E_ADF435X_LDPIN_MODE_DIGITAL_LOCK_HIGH = 2,
 } ADF435X_teLDPinMode;
 
+typedef enum {
+    E_ADF435X_PRESCALER_4_OVER_5 = 0,
+    E_ADF435X_PRESCALER_8_OVER_9 = 1,
+} ADF435X_tePrescaler;
+
+typedef enum {
+    E_ADF435X_OUTPUT_POWER_MINUS_4dBm = 0,
+    E_ADF435X_OUTPUT_POWER_MINUS_1dBm = 1,
+    E_ADF435X_OUTPUT_POWER_PLUS_2dBm = 2,
+    E_ADF435X_OUTPUT_POWER_PLUS_5dBm = 3,
+} ADF435X_teOutputPower;
+
+typedef struct {
+    ADF435X_teDeviceType eDeviceType;
+    ADF435X_teFeedbackSelect eFeedbackSelect;
+    ADF435X_teBandSelectClockMode eBandSelectClockMode;
+    ADF435X_teLowNoiseOrLowSpurMode eLowNoiseOrLowSpurMode;
+    ADF435X_teMuxOut eMuxOut;
+    ADF435X_tePDPolarity ePDPolarity;
+    ADF435X_teClockDviderMode eClockDivMode;
+    ADF435X_teAuxOutputSelect eAuxOutputSelect;
+    ADF435X_teLDPinMode eLDPinMode;
+    ADF435X_tePrescaler ePrescaler;
+    ADF435X_teOutputPower eOutputPower;
+    ADF435X_teOutputPower eAuxOutputPower;
+
+    uint64_t u64ReferenceFrequencyHz;
+    uint64_t u64ChannelSpacingHz;
+
+    uint32_t u32RCounter;
+    uint32_t u32PhaseValue;
+    uint32_t u32ClockDividerValue;
+
+    float fChargePumpCurrent;
+    float fLDP;
+    float fABP;
+
+    bool bEnableGCD;
+    bool bRefDoubler;
+    bool bRefDiv2;
+    bool bDoubleBufR4;
+    bool bPowerDown;
+    bool bCPTristate;
+    bool bCounterReset;
+    bool bChargeCancel;
+    bool bCSR;
+    bool bVCOPowerDown;
+    bool bMuteTillLockDetect;
+    bool bAuxOutputEnable;
+    bool bOutputEnable;
+
+} ADF435x_tsOptions;
+
 typedef struct {
     uint64_t u64Int;
     uint64_t u64Mod;
@@ -103,9 +156,10 @@ typedef union {
     uint32_t au32[6];
 } ADF435X_tuRegisters;
 
-bool ADF435x_Init(ADF435X_teVerbosity eVerbosity);
-bool ADF435x_CalculateSettings(uint64_t u64Frequency, ADF435X_tsSettings *psSettings);
-bool ADF435x_GenerateRegisters(ADF435X_tsSettings *psSettings, ADF435X_tuRegisters *puRegisters);
+void ADF435x_vInit(ADF435X_teVerbosity eVerbosity);
+void ADF435x_vGetOptions(ADF435x_tsOptions *psOptions);
+bool ADF435x_bCalculateSettings(uint64_t u64Frequency, ADF435x_tsOptions *psOptions, ADF435X_tsSettings *psSettings);
+bool ADF435x_bGenerateRegisters(ADF435x_tsOptions *psOptions, ADF435X_tsSettings *psSettings, ADF435X_tuRegisters *puRegisters);
 
 
 #endif // _ADF4351_H_
